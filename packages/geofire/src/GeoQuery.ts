@@ -1,12 +1,14 @@
 import { GeoCallbackRegistration } from './GeoCallbackRegistration';
 import {
-  distanceBetween, geohashForLocation, geohashQueryBounds, validateLocation, 
-  Geopoint, Geohash,GeohashRange
-} from 'geofire-common';
+  distanceBetween, geohashForLocation, geohashQueryBounds, validateLocation,
+  Geopoint, Geohash, GeohashRange
+} from '../../geofire-common/src';
 import {
-  decodeGeoFireObject, geoFireGetKey } from './databaseUtils';
+  decodeGeoFireObject, geoFireGetKey
+} from './databaseUtils';
 import * as GeoFireTypes from './GeoFireTypes';
 import * as DatabaseTypes from '@firebase/database-types';
+import { getDatabase, ref, child, get, update, startAt, endAt, orderByChild, query, onChildAdded, onChildChanged, onChildRemoved, onValue } from "firebase/database";
 
 export interface QueryCriteria {
   center?: Geopoint;
@@ -66,16 +68,16 @@ export function validateCriteria(newQueryCriteria: QueryCriteria, requireCenterA
  */
 export class GeoQuery {
   // Event callbacks
-  private _callbacks: GeoFireTypes.QueryCallbacks = { ready: [], key_entered: [], key_exited: [], key_moved: [] };
+  private _callbacks: any = { ready: [], key_entered: [], key_exited: [], key_moved: [] };
   // Variable to track when the query is cancelled
   private _cancelled = false;
-  private _center: Geopoint;
+  private _center: any;
   // A dictionary of geohash queries which currently have an active callbacks
-  private _currentGeohashesQueried: { [name: string]: QueryState } = {};
+  private _currentGeohashesQueried: { [name: string]: any } = {};
   // A dictionary of locations that a currently active in the queries
   // Note that not all of these are currently within this query
   private _locationsTracked: { [name: string]: GeoFireTypes.LocationTracked } = {};
-  private _radius: number;
+  private _radius: any;
 
   // Variables used to keep track of when to fire the 'ready' event
   private _valueEventFired = false;
@@ -83,17 +85,9 @@ export class GeoQuery {
 
   private _geohashCleanupScheduled = false;
   private _cleanUpCurrentGeohashesQueriedInterval: any;
-  private _cleanUpCurrentGeohashesQueriedTimeout = null;
+  private _cleanUpCurrentGeohashesQueriedTimeout: any = null;
 
-  /**
-   * @param _firebaseRef A Firebase reference where the GeoFire data will be stored.
-   * @param queryCriteria The criteria which specifies the query's center and radius.
-   */
-  constructor(private _firebaseRef: DatabaseTypes.Reference, queryCriteria: QueryCriteria) {
-    // Firebase reference of the GeoFire which created this query
-    if (Object.prototype.toString.call(this._firebaseRef) !== '[object Object]') {
-      throw new Error('firebaseRef must be an instance of Firebase');
-    }
+  constructor(private _database: any, private _databaseRef: any, private _databaseName: string, queryCriteria: QueryCriteria) {
 
     // Every ten seconds, clean up the geohashes we are currently querying for. We keep these around
     // for a little while since it's likely that they will need to be re-queried shortly after they
@@ -147,7 +141,7 @@ export class GeoQuery {
    *
    * @returns The [latitude, longitude] pair signifying the center of this query.
    */
-  public center(): Geopoint {
+  public center(): Geopoint | undefined {
     return this._center;
   }
 
@@ -219,7 +213,7 @@ export class GeoQuery {
    *
    * @returns The radius of this query, in kilometers.
    */
-  public radius(): number {
+  public radius(): number | undefined {
     return this._radius;
   }
 
@@ -277,12 +271,11 @@ export class GeoQuery {
    * @param query The geohash query.
    * @param queryState An object storing the current state of the query.
    */
-  private _cancelGeohashQuery(query: string[], queryState: QueryState): void {
-    const queryRef = this._firebaseRef.orderByChild('g').startAt(query[0]).endAt(query[1]);
-    queryRef.off('child_added', queryState.childAddedCallback);
-    queryRef.off('child_removed', queryState.childRemovedCallback);
-    queryRef.off('child_changed', queryState.childChangedCallback);
-    queryRef.off('value', queryState.valueCallback);
+  private _cancelGeohashQuery(query: string[], queryState: any): void {
+    queryState.childAddedUnsubscribe();
+    queryState.childRemovedUnsubscribe();
+    queryState.childChangedUnsubscribe();
+    queryState.valueUnsubscribe();
   }
 
   /**
@@ -290,7 +283,7 @@ export class GeoQuery {
    *
    * @param locationDataSnapshot A snapshot of the data stored for this location.
    */
-  private _childAddedCallback(locationDataSnapshot: DatabaseTypes.DataSnapshot): void {
+  private _childAddedCallback(locationDataSnapshot: any): void {
     this._updateLocation(geoFireGetKey(locationDataSnapshot), decodeGeoFireObject(locationDataSnapshot.val()));
   }
 
@@ -299,7 +292,7 @@ export class GeoQuery {
    *
    * @param locationDataSnapshot A snapshot of the data stored for this location.
    */
-  private _childChangedCallback(locationDataSnapshot: DatabaseTypes.DataSnapshot): void {
+  private _childChangedCallback(locationDataSnapshot: any): void {
     this._updateLocation(geoFireGetKey(locationDataSnapshot), decodeGeoFireObject(locationDataSnapshot.val()));
   }
 
@@ -308,19 +301,23 @@ export class GeoQuery {
    *
    * @param locationDataSnapshot A snapshot of the data stored for this location.
    */
-  private _childRemovedCallback(locationDataSnapshot: DatabaseTypes.DataSnapshot): void {
+  private _childRemovedCallback(locationDataSnapshot: any): void {
     const key: string = geoFireGetKey(locationDataSnapshot);
     if (key in this._locationsTracked) {
-      this._firebaseRef.child(key).once('value', (snapshot: DatabaseTypes.DataSnapshot) => {
-        const location: Geopoint = (snapshot.val() === null) ? null : decodeGeoFireObject(snapshot.val());
-        const geohash: Geohash = (location !== null) ? geohashForLocation(location) : null;
-        // Only notify observers if key is not part of any other geohash query or this actually might not be
-        // a key exited event, but a key moved or entered event. These events will be triggered by updates
-        // to a different query
-        if (!this._geohashInSomeQuery(geohash)) {
-          this._removeLocation(key, location);
+
+      get(child(this._databaseRef, this._databaseName + '/' + key)).then((snapshot) => {
+        if (snapshot.exists()) {
+          const location: any = decodeGeoFireObject(snapshot.val());
+          const geohash: any = (location !== null) ? geohashForLocation(location) : null;
+
+          // Only notify observers if key is not part of any other geohash query or this actually might not be
+          // a key exited event, but a key moved or entered event. These events will be triggered by updates
+          // to a different query
+          if (!this._geohashInSomeQuery(geohash)) {
+            this._removeLocation(key, location);
+          }
         }
-      });
+      })
     }
   }
 
@@ -369,7 +366,7 @@ export class GeoQuery {
    * @param distanceFromCenter The distance from the center or null.
    */
   private _fireCallbacksForKey(eventType: string, key: string, location?: Geopoint, distanceFromCenter?: number): void {
-    this._callbacks[eventType].forEach((callback) => {
+    this._callbacks[eventType].forEach((callback: any) => {
       if (typeof location === 'undefined' || location === null) {
         callback(key, null, null);
       } else {
@@ -382,7 +379,7 @@ export class GeoQuery {
    * Fires each callback for the 'ready' event.
    */
   private _fireReadyEventCallbacks(): void {
-    this._callbacks.ready.forEach((callback) => {
+    this._callbacks.ready.forEach((callback: any) => {
       callback();
     });
   }
@@ -466,31 +463,32 @@ export class GeoQuery {
     // Once every geohash to query is processed, fire the 'ready' event.
     geohashesToQuery.forEach((toQueryStr: string) => {
       // decode the geohash query string
-      const query: string[] = this._stringToQuery(toQueryStr);
+      const queryArray: string[] = this._stringToQuery(toQueryStr);
 
-      // Create the Firebase query
-      const firebaseQuery: DatabaseTypes.Query = this._firebaseRef.orderByChild('g').startAt(query[0]).endAt(query[1]);
+
+      const v9query = query(ref(this._database, this._databaseName), startAt(queryArray[0]), endAt(queryArray[1]), orderByChild('g'));
 
       // For every new matching geohash, determine if we should fire the 'key_entered' event
-      const childAddedCallback = firebaseQuery.on('child_added', (a) => this._childAddedCallback(a));
-      const childRemovedCallback = firebaseQuery.on('child_removed', (a) => this._childRemovedCallback(a));
-      const childChangedCallback = firebaseQuery.on('child_changed', (a) => this._childChangedCallback(a));
+
+      const childAddedUnsubscribe = onChildAdded(v9query, (a) => this._childAddedCallback(a));
+      const childRemovedUnsubscribe = onChildRemoved(v9query, (a) => this._childRemovedCallback(a));
+      const childChangedUnsubscribe = onChildChanged(v9query, (a) => this._childChangedCallback(a));
+      const valueUnsubscribe = onValue(v9query, () => {
+        valueUnsubscribe();
+        this._geohashQueryReadyCallback(toQueryStr);
+      });
 
       // Once the current geohash to query is processed, see if it is the last one to be processed
       // and, if so, mark the value event as fired.
       // Note that Firebase fires the 'value' event after every 'child_added' event fires.
-      const valueCallback = firebaseQuery.on('value', () => {
-        firebaseQuery.off('value', valueCallback);
-        this._geohashQueryReadyCallback(toQueryStr);
-      });
 
       // Add the geohash query to the current geohashes queried dictionary and save its state
       this._currentGeohashesQueried[toQueryStr] = {
         active: true,
-        childAddedCallback,
-        childRemovedCallback,
-        childChangedCallback,
-        valueCallback
+        childAddedUnsubscribe,
+        childRemovedUnsubscribe,
+        childChangedUnsubscribe,
+        valueUnsubscribe
       };
     });
     // Based upon the algorithm to calculate geohashes, it's possible that no 'new'
@@ -525,7 +523,7 @@ export class GeoQuery {
     const locationDict = this._locationsTracked[key];
     delete this._locationsTracked[key];
     if (typeof locationDict !== 'undefined' && locationDict.isInQuery) {
-      const distanceFromCenter: number = (currentLocation) ? distanceBetween(currentLocation, this._center) : null;
+      const distanceFromCenter: any = (currentLocation) ? distanceBetween(currentLocation, this._center) : null;
       this._fireCallbacksForKey('key_exited', key, currentLocation, distanceFromCenter);
     }
   }
@@ -554,15 +552,15 @@ export class GeoQuery {
    * @param key The key of the geofire location.
    * @param location The location as [latitude, longitude] pair.
    */
-  private _updateLocation(key: string, location?: Geopoint): void {
-    validateLocation(location);
+  private _updateLocation(key: string, location?: any): void {
+    validateLocation(location as any);
     // Get the key and location
     let distanceFromCenter: number, isInQuery;
     const wasInQuery: boolean = (key in this._locationsTracked) ? this._locationsTracked[key].isInQuery : false;
     const oldLocation: number[] = (key in this._locationsTracked) ? this._locationsTracked[key].location : null;
 
     // Determine if the location is within this query
-    distanceFromCenter = distanceBetween(location, this._center);
+    distanceFromCenter = distanceBetween(location as any, this._center);
     isInQuery = (distanceFromCenter <= this._radius);
 
     // Add this location to the locations queried dictionary even if it is not within this query
@@ -570,7 +568,7 @@ export class GeoQuery {
       location,
       distanceFromCenter,
       isInQuery,
-      geohash: geohashForLocation(location)
+      geohash: geohashForLocation(location as any)
     };
 
     // Fire the 'key_entered' event if the provided key has entered this query

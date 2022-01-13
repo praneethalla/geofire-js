@@ -10,9 +10,9 @@
  * License: MIT
  */
 import { GeoQuery, QueryCriteria } from './GeoQuery';
-import { geohashForLocation, validateLocation, validateKey, Geopoint } from 'geofire-common';
+import { geohashForLocation, validateLocation, validateKey, Geopoint } from '../../geofire-common/src';
 import { decodeGeoFireObject, encodeGeoFireObject } from './databaseUtils';
-
+import { getDatabase, ref, child, get, update } from "firebase/database";
 import * as GeoFireTypes from './GeoFireTypes';
 import * as DatabaseTypes from '@firebase/database-types';
 
@@ -20,13 +20,12 @@ import * as DatabaseTypes from '@firebase/database-types';
  * Creates a GeoFire instance.
  */
 export class GeoFire {
-  /**
-   * @param _firebaseRef A Firebase reference where the GeoFire data will be stored.
-   */
-  constructor(private _firebaseRef: DatabaseTypes.Reference) {
-    if (Object.prototype.toString.call(this._firebaseRef) !== '[object Object]') {
-      throw new Error('firebaseRef must be an instance of Firebase');
-    }
+  _database: any;
+  _databaseRef: any;
+
+  constructor(private _firebaseApp: any, private _databaseName: string) {
+    this._database = getDatabase(this._firebaseApp);
+    this._databaseRef = ref(this._database);
   }
 
   /********************/
@@ -40,25 +39,15 @@ export class GeoFire {
    * @param key The key of the location to retrieve.
    * @returns A promise that is fulfilled with the location of the given key.
    */
-  public get(key: string): Promise<Geopoint> {
+  public get(key: string): Promise<any> {
     validateKey(key);
-    return this._firebaseRef.child(key).once('value').then((dataSnapshot: DatabaseTypes.DataSnapshot) => {
-      const snapshotVal = dataSnapshot.val();
-      if (snapshotVal === null) {
-        return null;
+    return get(child(this._databaseRef, this._databaseName + '/' + key)).then((snapshot) => {
+      if (snapshot.exists()) {
+        return decodeGeoFireObject(snapshot.val());
       } else {
-        return decodeGeoFireObject(snapshotVal);
+        return null;
       }
-    });
-  }
-
-  /**
-   * Returns the Firebase instance used to create this GeoFire instance.
-   *
-   * @returns The Firebase instance used to create this GeoFire instance.
-   */
-  public ref(): DatabaseTypes.Reference {
-    return this._firebaseRef;
+    })
   }
 
   /**
@@ -83,8 +72,8 @@ export class GeoFire {
    * @param location The [latitude, longitude] pair to add.
    * @returns A promise that is fulfilled when the write is complete.
    */
-  public set(keyOrLocations: string | any, location?: Geopoint): Promise<any> {
-    let locations;
+  public set(keyOrLocations: string | any, location?: any): Promise<any> {
+    let locations: any;
     if (typeof keyOrLocations === 'string' && keyOrLocations.length !== 0) {
       // If this is a set for a single location, convert it into a object
       locations = {};
@@ -98,7 +87,7 @@ export class GeoFire {
       throw new Error('keyOrLocations must be a string or a mapping of key - location pairs.');
     }
 
-    const newData = {};
+    const newData: any = {};
 
     Object.keys(locations).forEach((key) => {
       validateKey(key);
@@ -106,16 +95,16 @@ export class GeoFire {
       const location: Geopoint = locations[key];
       if (location === null) {
         // Setting location to null is valid since it will remove the key
-        newData[key] = null;
+        newData[this._databaseName + '/' + key] = null;
       } else {
         validateLocation(location);
 
         const geohash: string = geohashForLocation(location);
-        newData[key] = encodeGeoFireObject(location, geohash);
+        newData[this._databaseName + '/' + key] = encodeGeoFireObject(location, geohash);
       }
     });
 
-    return this._firebaseRef.update(newData);
+    return update(this._databaseRef, newData);
   }
 
   /**
@@ -125,6 +114,6 @@ export class GeoFire {
    * @return A new GeoQuery object.
    */
   public query(queryCriteria: QueryCriteria): GeoQuery {
-    return new GeoQuery(this._firebaseRef, queryCriteria);
+    return new GeoQuery(this._database, this._databaseRef, this._databaseName, queryCriteria);
   }
 }
