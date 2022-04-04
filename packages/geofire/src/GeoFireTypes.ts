@@ -1,6 +1,4 @@
 /* tslint:disable:no-import-side-effect no-namespace */
-import { DataSnapshot } from '@firebase/database-types';
-
 export interface Document {
   '.priority': any;
   g: any;

@@ -13,8 +13,6 @@ import { GeoQuery, QueryCriteria } from './GeoQuery';
 import { geohashForLocation, validateLocation, validateKey, Geopoint } from '../../geofire-common/src';
 import { decodeGeoFireObject, encodeGeoFireObject } from './databaseUtils';
 import { getDatabase, ref, child, get, update } from "firebase/database";
-import * as GeoFireTypes from './GeoFireTypes';
-import * as DatabaseTypes from '@firebase/database-types';
 
 /**
  * Creates a GeoFire instance.

@@ -11,11 +11,20 @@
     "coverage": "lerna run coverage"
   },
   "devDependencies": {
-    "lerna": "^3.22.1"
+    "lerna": "^4.0.0"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/firebase/geofire-js.git"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "firebase": "^9.6.10",
+    "rollup": "^2.70.1",
+    "rollup-plugin-commonjs": "^10.1.0",
+    "rollup-plugin-node-resolve": "^5.2.0",
+    "rollup-plugin-typescript2": "^0.31.2",
+    "rollup-plugin-uglify": "^5.0.2",
+    "typescript": "^4.6.3"
+  }
 }

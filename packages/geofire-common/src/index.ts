@@ -43,7 +43,7 @@ function log2(x: number): number {
  * @param key The key to be verified.
  */
 export function validateKey(key: string): void {
-  let error: string;
+  let error!: string;
 
   if (typeof key !== 'string') {
     error = 'key must be a string';
@@ -69,7 +69,7 @@ export function validateKey(key: string): void {
  * @param location The [latitude, longitude] pair to be verified.
  */
 export function validateLocation(location: Geopoint): void {
-  let error: string;
+  let error!: string;
 
   if (!Array.isArray(location)) {
     error = 'location must be an array';

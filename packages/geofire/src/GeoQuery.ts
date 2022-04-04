@@ -8,7 +8,7 @@ import {
 } from './databaseUtils';
 import * as GeoFireTypes from './GeoFireTypes';
 import * as DatabaseTypes from '@firebase/database-types';
-import { getDatabase, ref, child, get, update, startAt, endAt, orderByChild, query, onChildAdded, onChildChanged, onChildRemoved, onValue } from "firebase/database";
+import { ref, child, get, startAt, endAt, orderByChild, query, onChildAdded, onChildChanged, onChildRemoved, onValue } from "firebase/database";
 
 export interface QueryCriteria {
   center?: Geopoint;
